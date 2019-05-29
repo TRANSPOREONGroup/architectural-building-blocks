@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<groupId>org.springframework.boot</groupId>
+		<version>2.1.4.RELEASE</version>
+	</parent>
+	
+	<groupId>com.transporeon.refarch.cononical</groupId>
+	<artifactId>canonical-backend-reference</artifactId>
+	<version>1.0.0</version>
+	
+	<packaging>jar</packaging>
+	
+	<properties>
+		<java.version>11</java.version>
+		
+		<jqassistant.version>1.6.0</jqassistant.version>
+		<building-blocks-annotation.version>1.0.0</building-blocks-annotation.version>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.transporeon.buildingblocks.annotation</groupId>
+			<artifactId>building-blocks-annotation</artifactId>
+			<version>${building-blocks-annotation.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-activemq</artifactId>
+		</dependency>
+		
+		<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>com.buschmais.jqassistant</groupId>
+				<artifactId>jqassistant-maven-plugin</artifactId>
+				<version>${jqassistant.version}</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>scan</goal>
+							<goal>analyze</goal>
+						</goals>
+						<configuration>
+							<concepts>
+								<concept>classpath:Resolve</concept>
+							</concepts>
+							<scanIncludes>
+								<scanInclude>
+									<path>../building-blocks-annotation/target/classes</path>
+									<scope>java:classpath</scope>
+								</scanInclude>
+							</scanIncludes>
+							<warnOnSeverity>MINOR</warnOnSeverity>
+							<failOnSeverity>MAJOR</failOnSeverity>
+							<groups>
+								<group>static</group>
+								<group>green</group>
+								<group>blue</group>
+								<group>responsibilities</group>
+								<group>constraintElement</group>
+								<group>constraintImperative</group>
+								<group>constraintProhibition</group>
+							</groups>
+							<useExecutionRootAsProjectRoot>true</useExecutionRootAsProjectRoot>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+
+	<reporting>
+		<plugins>
+			<plugin>
+				<groupId>com.buschmais.jqassistant</groupId>
+				<artifactId>jqassistant-maven-plugin</artifactId>
+				<version>${jqassistant.version}</version>
+				<reportSets>
+					<reportSet>
+						<reports>
+							<report>report</report>
+						</reports>
+					</reportSet>
+				</reportSets>
+			</plugin>
+		</plugins>
+	</reporting>
+	
+	<licenses>
+		<license>
+			<name>Apache License, Version 2.0</name>
+			<url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+		</license>
+	</licenses>
+
+	<organization>
+		<name>Transporeon GmbH</name>
+		<url>https://www.transporeon.com</url>
+	</organization>	
+
+	<scm>
+		<connection>scm:git:https://github.com/TRANSPOREONGroup/architectural-building-blocks.git</connection>
+		<developerConnection>scm:git:https://github.com/TRANSPOREONGroup/architectural-building-blocks.git</developerConnection>
+		<url>https://github.com/TRANSPOREONGroup/architectural-building-blocks</url>
+		<tag>HEAD</tag>
+	</scm>	
+</project>

@@ -1,0 +1,507 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2019 Transporeon GmbH.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	 http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<jqa:jqassistant-rules xmlns:jqa="http://www.buschmais.com/jqassistant/core/rule/schema/v1.4">
+	<group id="static">
+		<includeConcept refId="static:*"/>
+	</group>
+
+	<group id="blue">
+		<includeConcept refId="blue:*"/>
+	</group>
+
+	<group id="green">
+		<includeConcept refId="green:*"/>
+	</group>
+
+	<group id="responsibilities">
+		<includeConcept refId="resp:*"/>
+	</group>
+	<!--
+	static
+	-->
+	<concept id="static:LabelBuildingBlockAnnotation">
+		<description>Set Label for annotation @BuildingBlock </description>
+		<cypher><![CDATA[
+		MATCH (a:Annotation)-[:OF_TYPE]->(type:Java {fqn:'com.transporeon.buildingblocks.annotation.BuildingBlock'})
+		SET a:BuildingBlockAnnotation
+		RETURN a AS Annotation
+		]]></cypher>
+	</concept>
+
+	<concept id="static:LabelBuildingBlockAnnotationType">
+		<description>Set Label for type of annotation @BuildingBlock. Needed for constraint EveryClassBelongsToBB </description>
+		<cypher><![CDATA[
+		MATCH (a:BuildingBlockAnnotation)-[:OF_TYPE]->(type)
+	    SET type:BuildingBlockAnnotationType
+		RETURN  type AS BBA
+		]]></cypher>
+	</concept>
+	
+	 <concept id="static:LabelInherited">
+		<description>Set Label for annotation @Inherited </description>
+		<cypher><![CDATA[
+		MATCH (a:Annotation)-[:OF_TYPE]->(type:Java {fqn:'java.lang.annotation.inherited'})
+		SET a:Inherited
+		RETURN a AS InheritedAnnotation
+		]]></cypher>
+	</concept>
+
+	<!-- 
+	"Predefined and instances" 
+	-->
+	<concept id="static:LabelPredefinedBuildingBlockAnnotation">
+		<requiresConcept refId="static:LabelBuildingBlockAnnotation"/>
+		<description>Set Label PredefinedBuildingBlockAnnotation on predefined building blocks.</description>
+		<cypher><![CDATA[
+		MATCH (t:Type)-[:ANNOTATED_BY]->(annotation)
+		-[:OF_TYPE]->(predefinedBuildingBlock)
+		-[:ANNOTATED_BY]->(s:BuildingBlockAnnotation)
+		SET annotation:PredefinedBuildingBlockAnnotation
+		RETURN t
+		]]></cypher>
+	</concept>
+
+	<concept id="static:LabelBuildingBlock">
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<description>Set Label BuildingBlock on classes with a @PredefinedBB annotation.</description>
+		<cypher><![CDATA[
+		MATCH
+			(t:Type)-[:ANNOTATED_BY]->()
+			-[:OF_TYPE]->(p:PredefinedBuildingBlock)
+			SET t:BuildingBlock
+			RETURN t AS BuildingBlock
+		]]></cypher>
+	</concept>
+
+	<concept id="static:LabelPredefinedBuildingBlock">
+		<requiresConcept refId="static:LabelBuildingBlockAnnotation"/>
+		<description>Set Label PredefinedBuildingBlocks on classes with a @BuildingBlock annotation.</description>
+		<cypher><![CDATA[
+		MATCH (t:Type)-[:ANNOTATED_BY]->(annotation:BuildingBlockAnnotation)
+		SET t:PredefinedBuildingBlock
+		RETURN t AS PredefinedBuildingBlock
+		]]></cypher>
+	</concept>
+	<!--
+		Blue
+	-->
+	<concept id="blue:IncludeSubpackagesFalse">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlockAnnotation"/>
+		<description>Set property includeSubPackages = false to building block if subpackages are not included</description>
+		<cypher><![CDATA[
+		MATCH (element:Type)-[:ANNOTATED_BY]->(annotation)
+		-[:OF_TYPE]->(predefinedBuildingBlock)
+		-[:ANNOTATED_BY]->(b:BuildingBlockAnnotation)-[:HAS]->(attribute:Value {name:'includeSubPackages'})
+	   	WHERE attribute.value = false
+	   	SET element.includeSubPackages = false
+		RETURN element AS includeSubPackagesFalse
+	]]></cypher>
+	</concept>
+
+	<!-- NOTE If not includeSubPackages=false it is either explicitly set to true or not set at all (then default of true is used). -->
+	<concept id="blue:IncludeSubpackagesTrue">
+		<requiresConcept refId="blue:IncludeSubpackagesFalse"/>
+		<description>Set property includeSubPackages = true to building block if subpackages are included</description>
+		<cypher><![CDATA[
+		MATCH (element:BuildingBlock)
+	   	WHERE NOT EXISTS (element.includeSubPackages)
+		SET element.includeSubPackages = true
+		RETURN element AS IncludeSubpackagesTrue
+		]]></cypher>
+	</concept>
+
+	<concept id="blue:BelongsToBBFalse">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="blue:IncludeSubpackagesFalse"/>
+		<description>Create relationship from class to their building block in case include building block is false.</description>
+		<cypher><![CDATA[
+		MATCH (b:BuildingBlock)<-[:CONTAINS]-(p1:Package)-[:CONTAINS]->(t:Type)
+		WHERE b.includeSubPackages = false
+		CREATE (t)-[:BELONGS_TO_BB]->(b)
+		RETURN b AS BuildingBlock
+		]]></cypher>
+	</concept>
+
+	<concept id="blue:BelongsToBBTrue">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="blue:IncludeSubpackagesTrue"/>
+		<description>Create relationship from class to their building blocks in case includesubmodule is true</description>
+		<cypher><![CDATA[
+		MATCH (b:BuildingBlock)<-[:CONTAINS]-(p1:Package)-[:CONTAINS*0..42]->(p2:Package)-[:CONTAINS]->(t:Type)
+		WHERE b.includeSubPackages = true
+		CREATE (t)-[:BELONGS_TO_BB]->(b)
+		RETURN b AS BuildingBlock
+		]]></cypher>
+	</concept>
+
+	<concept id="blue:CodeDependencyBB">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="blue:BelongsToBBTrue"/>
+		<requiresConcept refId="blue:BelongsToBBFalse"/>
+		<description>Matches code-dependecy between BuildingBlocks (blue arrow)</description>
+		<cypher><![CDATA[
+		MATCH (s1:BuildingBlock)<-[:BELONGS_TO_BB]-(t1:Type)-[:DEPENDS_ON]->(t2:Type)-[:BELONGS_TO_BB]->(s2:BuildingBlock)
+		WHERE s1 <> s2
+		AND NOT t1:BuildingBlock
+		AND NOT t2:BuildingBlock
+		MERGE (s1)-[:CODE_DEPENDENCY_BB]->(s2)
+		RETURN s1 AS BuildingBlock1, s2 AS BuildingBlock2
+	   ]]></cypher>
+	</concept>
+
+	<concept id="blue:CodeDependencyPredefined">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="blue:CodeDependencyBB"/>
+		<requiresConcept refId="green:BelongsToPredefined"/>
+		<description>Matches code-dependecy between PredefinedBuildingBlocks (blue arrow)</description>
+		<cypher><![CDATA[
+		MATCH (p1:PredefinedBuildingBlock)<-[:BELONGS_TO_PREDEFINED]-(s1:BuildingBlock)-[:CODE_DEPENDENCY_BB]->(s2:BuildingBlock)-[:BELONGS_TO_PREDEFINED]->(p2:PredefinedBuildingBlock)
+		WHERE p1 <> p2
+		MERGE (p1)-[:CODE_DEPENDENCY_PREDEFINED]->(p2)
+		RETURN p1 AS PredefinedBuildingBlock1, p2 AS PredefinedBuildingBlock2
+	   ]]></cypher>
+	</concept>
+	<!--
+		Green
+	-->
+	<concept id="green:BelongsToPredefined">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlockAnnotation"/>
+		<description>Create relationship from bb to predefinedBuildingBlock</description>
+		<cypher><![CDATA[
+		MATCH (b:BuildingBlock)-[:ANNOTATED_BY]->(p:PredefinedBuildingBlockAnnotation)-[:OF_TYPE]->(predefinedBuildingBlock:PredefinedBuildingBlock)
+		CREATE (b)-[:BELONGS_TO_PREDEFINED]->(predefinedBuildingBlock)
+		RETURN b AS BuildingBlock, predefinedBuildingBlock AS Predefined
+		]]></cypher>
+	</concept>
+
+	<concept id="green:PredefinedUses">
+		<requiresConcept refId="static:LabelBuildingBlockAnnotation"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<description>Create relationship between PredefinedBuildingBlocks. (green arrow)</description>
+		<cypher><![CDATA[
+		MATCH (predefinedBuildingBlock:PredefinedBuildingBlock)-[:ANNOTATED_BY]->(annotation:BuildingBlockAnnotation)-[:HAS]->(attribute:Value)-[:CONTAINS]->()-[:IS]->(s)
+		WHERE attribute.name ='uses' OR attribute.name = 'value'
+		CREATE (predefinedBuildingBlock)-[:PREDEFINED_USES]->(s)
+		RETURN predefinedBuildingBlock,s
+		]]></cypher>
+	</concept>
+
+	<concept id="green:PredefinedAllowsUse">
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="green:PredefinedUses"/>
+		<requiresConcept refId="green:BelongsToPredefined"/>
+		<description>Creates a relationship between building blocks, if their predefinedBuildingBlocks have a uses-relationship</description>
+		<cypher><![CDATA[
+		MATCH (t:Type)-[:BELONGS_TO_PREDEFINED]->(p1:PredefinedBuildingBlock)
+		-[:PREDEFINED_USES]->(p2:PredefinedBuildingBlock)<-[:BELONGS_TO_PREDEFINED]-(t2:Type)
+		CREATE (t)-[:PREDEFINED_ALLOWS_USE]->(t2)
+		RETURN t, t2
+		]]></cypher>
+	</concept>
+	<!-- 
+	RESPONSIBILITIES 
+	-->
+	<concept id="resp:CreateAllowsAnnotationsRel">
+		<requiresConcept refId="static:LabelBuildingBlockAnnotation"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<description>Finds allowed annotations from building block Annotation and creates a relationship between them. Also sets LABEL to allowed annotation </description>
+		<cypher><![CDATA[
+		MATCH (p:PredefinedBuildingBlock)-[:ANNOTATED_BY]->(ba:BuildingBlockAnnotation)
+		-[:HAS]->(attribute:Value {name:'allowedAnnotations'})
+		-[:CONTAINS]->()-[:IS]->(allowedAnno)
+		SET allowedAnno:AllowedAnnotation
+		MERGE (p)-[:ALLOWS_ANNOTATION]->(allowedAnno)
+		RETURN p AS PredefinedBuildingBlock, allowedAnno AS AllowedAnnotations
+		]]></cypher>
+	</concept>
+
+	<concept id="resp:ForbidsAnnotationsRel">
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="resp:CreateAllowsAnnotationsRel"/>
+		<description>Creates a relationship between building blocks and annotations, if the annotation are forbidden to be used in said building block</description>
+		<cypher><![CDATA[
+		MATCH (p1:PredefinedBuildingBlock)-[:ANNOTATED_BY]->()
+		-[:OF_TYPE]->(type:Java)
+		<-[:OF_TYPE]-()<-[:ANNOTATED_BY]-(p2:PredefinedBuildingBlock)
+		-[:ALLOWS_ANNOTATION]->(a)
+		WHERE NOT (p1)-[:ALLOWS_ANNOTATION]->(a)
+		MERGE (p1)-[:FORBIDS_ANNOTATION]->(a)
+		RETURN p1 AS PredefinedBuildingBlock, a AS ForbiddenAnnotation
+		]]></cypher>
+	</concept>
+
+	<concept id="resp:UsesAnnotationsRel">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<description>Creates a relationship between building block and annotations, if the annotations are used, regardless of forbidden or allowed</description>
+		<cypher><![CDATA[
+		MATCH (b:BuildingBlock)<-[:BELONGS_TO_BB]-(t:Type)
+		-[:ANNOTATED_BY]->()-[:OF_TYPE]->(a)
+		MERGE (b)-[:USES_ANNOTATION]->(a)
+		RETURN b AS BuildingBlock, a AS UsedAnnotation
+		]]></cypher>
+	</concept>
+
+	<concept id="resp:UsesAnnotationsBB">
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<description>Creates a relationship between building block and annotations, if the annotation are used by block itself, regardless of forbidden or allowed</description>
+		<cypher><![CDATA[
+		MATCH (b:BuildingBlock)
+		-[:ANNOTATED_BY]->()-[:OF_TYPE]->(a)
+		CREATE  (b)-[:USES_ANNOTATION]->(a)
+		RETURN b AS BuildingBlock, a AS UsedAnnotation
+		]]></cypher>
+	</concept>
+
+	<concept id="resp:AllowsAcyclic">
+		<requiresConcept refId="static:LabelBuildingBlockAnnotation"/>
+		<description>Labels PBB that allow acyclic dependencies within themselves</description>
+		<cypher><![CDATA[
+		MATCH (t:Type)-[:ANNOTATED_BY]->(annotation)
+		-[:OF_TYPE]->(predefinedBuildingBlock)
+		-[:ANNOTATED_BY]->(b:BuildingBlockAnnotation)-[:HAS]->(attribute:Value {name:'allowAcyclic'})
+		SET predefinedBuildingBlock:AllowsAcyclic
+		RETURN t
+		]]></cypher>
+	</concept>
+	<!--
+
+	CONSTRAINTS
+
+	-->
+	<group id="constraintElement">
+		<includeConstraint  refId="constraintElement:CheckForDomainCycles"/>
+	</group>
+
+	<group id="constraintImperative">
+		<includeConstraint refId="constraintImperative:CodeMatchesDescriptor"/>
+		<includeConstraint refId="constraintImperative:CodeMatchesDescriptorBB"/>
+		<includeConstraint refId="constraintImperative:EveryClassBelongsToBB"/>
+	</group>
+
+	<group id="constraintProhibition">
+		<includeConstraint refId="constraintProhibition:CheckForGreenCycles"/>
+		<includeConstraint refId="constraintProhibition:CheckForBlueCycles"/>
+		<includeConstraint  refId="constraintProhibition:CheckForForbiddenAnnotations"/>
+		<includeConstraint  refId="constraintProhibition:UsesOnlyPredefined"/>
+		<includeConstraint  refId="constraintProhibition:ReflexiveCycles"/>
+	</group>
+
+	<!-- Imperative Rules (Green == BLUE) -->
+
+	<constraint  id="constraintImperative:CodeMatchesDescriptorBB">
+		<requiresConcept refId="green:PredefinedAllowsUse"/>
+		<requiresConcept refId="blue:CodeDependencyBB"/>
+		<description>Returns buildingblocks with a code-dependency without a conceptual dependency</description>
+		<cypher><![CDATA[
+			MATCH
+				(b1:BuildingBlock)-[:CODE_DEPENDENCY_BB]->(b2:BuildingBlock)
+			WHERE NOT
+				(b1)-[:PREDEFINED_ALLOWS_USE]->(b2)
+			RETURN
+				b1 AS ForbiddenOutgoingDependency, b2 AS ForbiddenIncomingDependency
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintImperative:CodeMatchesDescriptor">
+		<requiresConcept refId="green:PredefinedUses"/>
+		<requiresConcept refId="blue:CodeDependencyPredefined"/>
+		<description>Returns predefined buildingblocks with a code dependency without a conceptual relationship</description>
+		<cypher><![CDATA[
+			MATCH
+				(p1:PredefinedBuildingBlock)-[:CODE_DEPENDENCY_PREDEFINED]->(p2:PredefinedBuildingBlocks)
+			WHERE NOT
+				(p1)-[:PREDEFINED_USES]->(p2)
+			RETURN
+				p1 AS ForbiddenOutgoingDependency, p2 AS ForbiddenIncomingDependency
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintImperative:EveryClassBelongsToBB">
+		<requiresConcept refId="blue:BelongsToBBFalse"/>
+		<requiresConcept refId="blue:BelongsToBBTrue"/>
+		<requiresConcept refId="green:BelongsToPredefined"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="static:LabelBuildingBlockAnnotationType"/>
+		<description>Returns classes that do not belong to a Building Block</description>
+		<cypher><![CDATA[
+			MATCH
+				(p:Package)-[:CONTAINS]->(t:Type)
+			WHERE NOT
+				(t)-[:BELONGS_TO_BB]->()
+			AND NOT
+				(t)-[:BELONGS_TO_PREDEFINED]->()
+			AND NOT
+				t:PredefinedBuildingBlock
+			AND NOT
+				t:BuildingBlockAnnotationType
+			RETURN t AS ClassWithoutBuildingBlock
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<!-- Element Rules -->
+	<constraint  id="constraintElement:CheckForDomainCycles">
+		<requiresConcept refId="resp:AllowsAcyclic"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="green:BelongsToPredefined"/>
+		<requiresConcept refId="blue:CodeDependencyBB"/>
+		<description>Returns any cycles between domains </description>
+		<cypher><![CDATA[
+			MATCH
+			(p:PredefinedBuildingBlock:AllowsAcyclic)<-[:BELONGS_TO_PREDEFINED]-(b1:BuildingBlock)-[:CODE_DEPENDENCY_BB]->(b2:BuildingBlock)-[:BELONGS_TO_PREDEFINED]->(p),
+			path=shortestPath((b2)-[:CODE_DEPENDENCY_BB*]->(b1))
+		WHERE
+			b1<>b2
+		RETURN
+			b1 AS BuildingBlock, EXTRACT(p IN nodes(path) | p.fqn) AS Cycle
+		 ORDER BY
+				BuildingBlock.fqn
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<!-- Prohibition Rules -->
+	<constraint  id="constraintProhibition:CheckForGreenCycles">
+		<requiresConcept refId="green:PredefinedUses"/>
+		<description>Returns PredefinedBuildingBlocks with a forbidden cycle in concept</description>
+		<cypher><![CDATA[
+		MATCH
+			(p1:PredefinedBuildingBlock)-[:PREDEFINED_USES]->(p2:PredefinedBuildingBlock),
+				path=shortestPath((p2)-[:PREDEFINED_USES*]->(p1))
+			WHERE
+				p1<>p2
+			RETURN
+				p1 AS PreBB, EXTRACT(p IN nodes(path) | p.fqn) AS Cycle
+			ORDER BY
+				PreBB.fqn
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintProhibition:CheckForBlueCycles">
+		<requiresConcept refId="blue:CodeDependencyPredefined"/>
+		<description>Returns predefinedBuildingBlock with a forbidden cycle in code</description>
+		<cypher><![CDATA[
+			MATCH
+				(p1:PredefinedBuildingBlock)-[:CODE_DEPENDENCY_PREDEFINED]->(p2:PredefinedBuildingBlock),
+				 path=shortestPath((p2)-[:CODE_DEPENDENCY_PREDEFINED*]->(p1))
+			WHERE
+				p1<>p2
+			RETURN
+				p1 AS PreBB, EXTRACT(p IN nodes(path) | p.fqn) AS Cycle
+			ORDER BY
+				PreBB.fqn
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintProhibition:CheckForForbiddenAnnotations">
+		<requiresConcept refId="resp:ForbidsAnnotationsRel"/>
+		<requiresConcept refId="resp:UsesAnnotationsRel"/>
+		<requiresConcept refId="static:LabelInherited"/>
+		<description>Returns used annotations, where predefinedBuildingBlock forbids them  </description>
+		<cypher><![CDATA[
+				MATCH
+					(p:PredefinedBuildingBlock)<-[:BELONGS_TO_PREDEFINED]
+					-(b:BuildingBlock)-[:USES_ANNOTATION]
+					->(a)
+				WHERE
+					(p)-[:FORBIDS_ANNOTATION]->(a)
+				AND NOT a:Inherited	
+				RETURN
+					b AS BuildingBlock, a AS ForbiddenAnnotation
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintProhibition:UsesOnlyPredefined">
+		<requiresConcept refId="green:PredefinedUses"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<description>Returns any classes that are descriptively used by PredefinedBuildingBlocks that are not PBB as well  </description>
+		<cypher><![CDATA[
+			MATCH
+				(p:PredefinedBuildingBlock)-[:PREDEFINED_USES]->(p2)
+			WHERE NOT
+				(p2:PredefinedBuildingBlock)
+			RETURN
+				p AS PredefinedUses, p2 AS WronglyUsedClass
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+
+	<constraint  id="constraintProhibition:UsesOnlyAllowedExceptions">
+		<requiresConcept refId="green:PredefinedUses"/>
+		<requiresConcept refId="static:LabelPredefinedBuildingBlock"/>
+		<requiresConcept refId="static:LabelBuildingBlock"/>
+		<requiresConcept refId="resp:CreateAllowsExceptionsRel"/>
+		<description>Returns exceptions, that are not allowed by Predefined</description>
+		<cypher><![CDATA[
+			MATCH
+				(p:PredefinedBuildingBlock)<-[:BELONGS_TO_PREDEFINED]-(b:BuildingBlock)
+				<-[:BELONGS_TO_BB]-(t:Type)-[:DECLARES]->()-[:THROWS]->(exception)
+			WHERE NOT
+				(p)-[:ALLOWS_EXCEPTION]->(exception)
+			RETURN
+				exception AS ForbiddenExcepion, t AS Offender
+			]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+
+	<constraint  id="constraintProhibition:ReflexiveCycles">
+		<requiresConcept refId="green:BelongsToPredefined"/>
+		<requiresConcept refId="blue:BelongsToBBFalse"/>
+		<requiresConcept refId="blue:BelongsToBBTrue"/>
+		<description>Returns dependencies within the PredefinedBuildingBlocks, except where allowed</description>
+		<cypher><![CDATA[
+			MATCH
+				(p:PredefinedBuildingBlock)<-[:BELONGS_TO_PREDEFINED]-(b:BuildingBlock)
+				<-[:BELONGS_TO_BB]-(t:Type)-[:DEPENDS_ON]->(t2:Type)-[:BELONGS_TO_BB]->(b2:BuildingBlock)-[:BELONGS_TO_PREDEFINED]->(p)
+			WHERE NOT
+				p:AllowsAcyclic
+			RETURN t AS OutgoingDependency, t2 AS IncomingDependency
+		]]></cypher>
+		<verify>
+			<rowCount max="0"/>
+		</verify>
+	</constraint>
+</jqa:jqassistant-rules>
